@@ -29,9 +29,11 @@ def actionReplaceContainer(containerName, uuidToReplace, partitionName, tredlyFi
     
     if (partitionName is None):
         e_error("Please include a partition name.")
+        exit(1)
         
     if (tredlyFilePath is None):
         e_error("Please specify the path of the new container")
+        exit(1)
     
     # End pre flight checks
     ###############################
