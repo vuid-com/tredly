@@ -145,5 +145,5 @@ elif (args.action == "replace") and (args.subject == "container"):  # replace co
 elif (args.action == "version"):
     print(SCRIPTNAME + ": version " + VERSION_NUMBER + " (built " + VERSION_DATE + ")")
 else:
-    e_error("Command not found")
+    e_error("Command " + args.action + " not found")
     exit(1)

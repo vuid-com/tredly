@@ -141,7 +141,7 @@ def actionCreateContainer(containerName, partitionName, tredlyFilePath, ip4Addr 
     # populate the data from tredlyfile
     container.loadFromTredlyfile()
     
-    e_header("Creating Container - " + container.name)
+    e_header("Creating Container - " + container.name + ' in partition ' + container.partitionName)
     
     # create container on the filesystem
     container.create()
@@ -193,6 +193,16 @@ def actionCreateContainer(containerName, partitionName, tredlyFilePath, ip4Addr 
     # Register the URLs
     container.registerURLs()
     
+    # reload unbound
+    e_note("Reloading DNS server")
+    cmd = ['service', 'unbound', 'reload']
+    process = Popen(cmd,  stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    stdOut, stdErr = process.communicate()
+    if (process.returncode == 0):
+        e_success("Success")
+    else:
+        e_error("Failed")
+    
     # set up layer 4 proxy if it was requested
     if (container.layer4Proxy):
         e_note("Configuring layer 4 Proxy (tcp/udp) for " + container.name)
@@ -201,6 +211,8 @@ def actionCreateContainer(containerName, partitionName, tredlyFilePath, ip4Addr 
             e_success("Success")
         else:
             e_error("Failed")
+    
+    
     
     # Update containergroup member firewall tables
     if (container.group is not None):
