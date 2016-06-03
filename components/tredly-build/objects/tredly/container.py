@@ -1048,11 +1048,11 @@ class Container:
                 hostFirewall.readRules()
                 
                 # remove the ip from table 1
-                if (not hostFirewall.removeFromTable('1', str(self.containerInterfaces[0].ip4Addrs[0].ip))):
+                if (not hostFirewall.removeFromTable(1, str(self.containerInterfaces[0].ip4Addrs[0].ip))):
                     e_error("Failed to remove ip address from host table 1")
                 
                 # remove the epair from table 2
-                if (not hostFirewall.removeFromTable('2', self.containerInterfaces[0].name)):
+                if (not hostFirewall.removeFromTable(2, self.containerInterfaces[0].name)):
                     e_error("Failed to remove interface from host table 2")
                 
                 hostFirewall.apply()
@@ -1205,7 +1205,7 @@ class Container:
         
         # set max cpu
         if (self.maxCpu != 'unlimited'):
-            cmd = ['rctl', '-a', 'jail:trd-' + self.uuid + ":pcpu:deny=" + self.maxCpu]
+            cmd = ['rctl', '-a', 'jail:trd-' + self.uuid + ":pcpu:deny=" + self.maxCpu.rstrip('%')]
             process = Popen(cmd,  stdin=PIPE, stdout=PIPE, stderr=PIPE)
             stdOut, stdErr = process.communicate()
             if (process.returncode != 0):
@@ -1213,7 +1213,7 @@ class Container:
                 print(cmd)
                 return False
             else:
-                e_warning("maxCpu property value was set. Setting to " + self.maxCpu + "%")
+                e_warning("maxCpu property value was set. Setting to " + self.maxCpu.rstrip('%') + "%")
         else:
             e_warning("maxCpu property value was not set. Defaulting to unlimited.")
 
@@ -1504,8 +1504,8 @@ class Container:
             # read contents
             unboundFile.read()
             
-            # only assign this hostname to the first interface
-            if (unboundFile.append("local-data", urlDomain, "IN", "A", str(self.containerInterfaces[0].ip4Addrs[0].ip), self.uuid)):
+            # assign the url domain to the proxy IP in dns
+            if (unboundFile.append("local-data", urlDomain, "IN", "A", builtins.tredlyCommonConfig.httpProxyIP, self.uuid)):
                 # register the url within zfs
                 zfsContainer.appendArray(ZFS_PROP_ROOT + ".registered_dns_names", urlDomain)
             
@@ -1557,7 +1557,7 @@ class Container:
                 unboundFile.read()
                 
                 # only assign this hostname to the first interface
-                if (unboundFile.append("local-data", redirectFrom['url'].split('://')[1], "IN", "A", str(self.containerInterfaces[0].ip4Addrs[0].ip), self.uuid)):
+                if (unboundFile.append("local-data", redirectFrom['url'].split('://')[1], "IN", "A", builtins.tredlyCommonConfig.httpProxyIP, self.uuid)):
                     # success so include this url in zfs
                     zfsContainer.appendArray(ZFS_PROP_ROOT + ".registered_dns_names", redirectFrom['url'])
                 
