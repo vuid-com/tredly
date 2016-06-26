@@ -2357,3 +2357,54 @@ class Container:
                 returnValue = (True and returnValue)
         
         return returnValue
+    
+    # Action: Moves this container to a new host
+    #
+    # Pre: container exists
+    # Post: container has been moved to a new host and destroyed locally
+    #
+    # Params: host - the host to move it to
+    #
+    # Return: True if succeeded, False otherwise
+    def moveToHost(self, host):
+        
+        # set snapshot name to current epoch
+        snapshotName = str(time.time())
+        
+        # get a handle to ZFS properties
+        zfsContainer = ZFSDataset(self.dataset, self.mountPoint)
+        
+        # shut down the container
+        if (self.stop()):
+            e_success()
+        else:
+            e_error()
+            return False
+        
+        # take a snapshot of the container
+        e_note("Snapshotting Container")
+        if (zfsContainer.takeSnapshot(snapshotName)):
+            e_success()
+        else:
+            e_error()
+            return False
+        
+        # send the snapshot to an xzipped file
+        e_note("Saving Snapshot. This may take some time...")
+        # TODO: change this from /tmp to something else
+        if (zfsContainer.sendSnapshotToFile(snapshotName, '/tmp/' + self.uuid)):
+            e_success()
+        else:
+            e_error()
+            return False
+        
+        # copy the file across
+        
+        # unpack the file on the remote host
+        
+        # restore the snapshot on the remote host
+        
+        # start the container on the remote host
+        
+        # destroy the dataset locally
+

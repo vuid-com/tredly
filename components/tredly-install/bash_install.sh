@@ -813,6 +813,10 @@ fi
 if [[ "${_TREDLYINSTALLDEBUG}" == 'true' ]]; then
     read -p "press any key to continue" confirm
 fi
+/usr/local/sbin/tredly config host DNS "8.8.8.8,8.8.4.4"
+if [[ "${_TREDLYINSTALLDEBUG}" == 'true' ]]; then
+    read -p "press any key to continue" confirm
+fi
 
 # if whitelist was given to us then set it up
 if [[ -n "${_CONF_COMMON[apiWhitelist]}" ]]; then
