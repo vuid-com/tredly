@@ -20,6 +20,14 @@ for f in ${_DIR}/../tredly-libs/bash-install/*.sh; do source ${f}; done
 # make sure this script is running as root
 cmn_assert_running_as_root
 
+# check if there are runnign containers
+_containerCount=$( zfs_get_all_containers | wc -l )
+_containerCount=$( ltrim "${_containerCount}" )
+
+if [[ ${_containerCount} -gt 0 ]]; then
+    exit_with_error "${_containerCount} Tredly container(s) found. Please destroy all containers before attempting to upgrade."
+fi
+
 # get a list of external interfaces
 IFS=$'\n' declare -a _externalInterfaces=($( get_external_interfaces ))
 
