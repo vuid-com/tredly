@@ -2477,7 +2477,6 @@ class Container:
         # copy the file across
         e_note("Copying file to host " + host)
         cmd = ['scp', '-P', port, filePath, user + "@" + host + ':' + filePath]
-        print(cmd)
         process = Popen(cmd,  stdin=PIPE, stdout=PIPE, stderr=PIPE)
         stdOut, stdErr = process.communicate()
         rc = process.returncode
@@ -2490,7 +2489,6 @@ class Container:
         # unpack the file on the remote host and restore the snapshot
         e_note("Unpacking file on host " + host)
         cmd = ['ssh', '-p', port, user + "@" + host, 'xz -d < ' + filePath + ' | zfs receive ' + self.dataset]
-        print(cmd)
         process = Popen(cmd,  stdin=PIPE, stdout=PIPE, stderr=PIPE)
         stdOut, stdErr = process.communicate()
         rc = process.returncode
@@ -2504,15 +2502,14 @@ class Container:
         # unpack the file on the remote host
         e_note("Starting container " + self.name + " on host " + host)
         cmd = ['ssh', '-p', port, user + "@" + host, 'tredly', 'start', 'container', self.uuid]
-        print(cmd)
         process = Popen(cmd,  stdin=PIPE, stdout=PIPE, stderr=PIPE)
         stdOut, stdErr = process.communicate()
         rc = process.returncode
         if (rc == 0):
             e_success()
-            print(stdOut.decode('UTF-8'))
         else:
             e_error()
+            print(stdOut.decode('UTF-8'))
             return False
 
         # Set the local dataset to be state "moved" instead of deleting it
@@ -2521,7 +2518,6 @@ class Container:
         # remove the file on the remote and local hosts
         e_note("Cleaning up local host")
         cmd = ['rm', '-f', filePath]
-        print(cmd)
         process = Popen(cmd,  stdin=PIPE, stdout=PIPE, stderr=PIPE)
         stdOut, stdErr = process.communicate()
         rc = process.returncode
@@ -2533,7 +2529,6 @@ class Container:
         
         e_note("Cleaning up remote host")
         cmd = ['ssh', '-p', port, user + "@" + host, 'rm', '-f', filePath]
-        print(cmd)
         process = Popen(cmd,  stdin=PIPE, stdout=PIPE, stderr=PIPE)
         stdOut, stdErr = process.communicate()
         rc = process.returncode
