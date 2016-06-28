@@ -2499,7 +2499,6 @@ class Container:
             return False
 
         # start the container on the remote host
-        # unpack the file on the remote host
         e_note("Starting container " + self.name + " on host " + host)
         cmd = ['ssh', '-p', port, user + "@" + host, 'tredly', 'start', 'container', self.uuid]
         process = Popen(cmd,  stdin=PIPE, stdout=PIPE, stderr=PIPE)
@@ -2525,7 +2524,6 @@ class Container:
             e_success()
         else:
             e_error()
-            return False
         
         e_note("Cleaning up remote host")
         cmd = ['ssh', '-p', port, user + "@" + host, 'rm', '-f', filePath]
@@ -2536,4 +2534,5 @@ class Container:
             e_success()
         else:
             e_error()
-            return False
+        
+        return True
