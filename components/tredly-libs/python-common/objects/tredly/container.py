@@ -359,7 +359,7 @@ class Container:
         
         # ################# 
         # Pre flight checks
-        # set up a set of certs to copy so we can validate that they exist,a nd then copy them in
+        # set up a set of certs to copy so we can validate that they exist, and then copy them in
         certsToCopy = set() # use a set for unique values
         for url in builtins.tredlyFile.json['container']['proxy']['layer7Proxy']:
             if (url['cert'] is not None):
@@ -2364,3 +2364,182 @@ class Container:
                 returnValue = (True and returnValue)
         
         return returnValue
+    
+    # Action: Moves this container to a new host
+    #
+    # Pre: container exists
+    # Post: container has been moved to a new host and destroyed locally
+    #
+    # Params: host - the host to move it to
+    #
+    # Return: True if succeeded, False otherwise
+    def moveToHost(self, userHostPortString):
+        
+        # TODO: moving containers with URLs presents an issue with setting up of SSLCerts on the remote host where the container's SSL cert comes from the container directory
+        # this could potentially be mitigated by keeping copies of the container certs within the container itself under <uuid>/sslcerts
+        if (len(self.urls)):
+            e_error("This container is associated with " + str(len(self.urls)) + " URL(s). Container move does not currently support moving containers associated with URLs.")
+            return False
+        
+        # split out the host into user, hostname/ip and port
+        # get the port
+        if (':' in userHostPortString):
+            port = userHostPortString.split(':', 1)[-1]
+        else:
+            port = "22"
+
+        # get the user
+        if ('@' in userHostPortString):
+            user = userHostPortString.split('@', 1)[0]
+        else:
+            user = 'tredly'
+        
+        # get the host
+        if ('@' in userHostPortString) and (':' in userHostPortString): # matches username@host:port
+            host = userHostPortString.split('@', 1)[-1].split(':', 1)[0]
+        elif ('@' in userHostPortString) and (not ':' in userHostPortString):   # matches username@host
+            host = userHostPortString.split('@', 1)[-1]
+        elif (not '@' in userHostPortString) and (':' in userHostPortString):   # matches host:port
+            host = userHostPortString.split(':', 1)[0]
+        else:
+            host = userHostPortString
+
+        # set up an ssh command list so that we dont have to keep typing it
+        sshCmd = ['ssh', '-p', port, user + "@" + host]
+
+        # check that tredly is installed on the other machine
+        e_note("Checking if the remote host has Tredly installed")
+        cmd = sshCmd + ['which tredly']
+        process = Popen(cmd,  stdin=PIPE, stdout=PIPE, stderr=PIPE)
+        stdOut, stdErr = process.communicate()
+        
+        if (process.returncode == 0):
+            e_success()
+        else:
+            e_error("Tredly is not installed on the remote host")
+            return False
+        
+        # make sure this container's uuid isnt already in use on the remote machine
+        e_note("Checking that this UUID does not exist on the remote host")
+        cmd = sshCmd + ['zfs get -H -o property,value all | grep "' + ZFS_PROP_ROOT + ':host_hostuuid"']
+        process = Popen(cmd,  stdin=PIPE, stdout=PIPE, stderr=PIPE)
+        stdOut, stdErr = process.communicate()
+        rc = process.returncode
+        
+        stdOutString = stdOut.decode('UTF-8')
+        
+        # look for the uuid of this container
+        for line in stdOutString.splitlines():
+            if (line.split()[1] == self.uuid):
+                e_error("Cannot move container because the container's UUID " + self.uuid + " already exists on the remote host.")
+                return False
+        e_success()
+
+        # check that the container's partition is set up on the other machine
+        e_note("Checking if partition " + self.partitionName + " exists on the remote host.")
+        cmd = sshCmd + ['tredly list partition ' + self.partitionName]
+        process = Popen(cmd, stdin=PIPE, stdout=PIPE, stderr=PIPE)
+        stdOut, stdErr = process.communicate()
+        
+        if (process.returncode == 0):
+            e_success()
+        else:
+            e_error()
+            return False
+        
+        # TODO: make sure that the container's URL certs exist on the remote host
+
+        # set snapshot name to current epoch
+        snapshotName = str(time.time())
+        
+        # get a handle to ZFS properties
+        zfsContainer = ZFSDataset(self.dataset, self.mountPoint)
+        
+        # shut down the container
+        e_note("Stopping Container")
+        if (self.stop()):
+            e_success()
+        else:
+            e_error()
+            return False
+        
+        # take a snapshot of the container
+        e_note("Snapshotting Container")
+        if (zfsContainer.takeSnapshot(snapshotName)):
+            e_success()
+        else:
+            e_error()
+            return False
+        
+        # send the snapshot to an xzipped file
+        e_note("Saving Snapshot. This may take some time...")
+        # TODO: change this from /tmp to something else
+        filePath = '/tmp/' + self.uuid + '-' + snapshotName + '.xz'
+        if (zfsContainer.sendSnapshotToFile(snapshotName, filePath)):
+            e_success()
+        else:
+            e_error()
+            return False
+        
+        # copy the file across
+        e_note("Copying file to host " + host)
+        cmd = ['scp', '-P', port, filePath, user + "@" + host + ':' + filePath]
+        process = Popen(cmd,  stdin=PIPE, stdout=PIPE, stderr=PIPE)
+        stdOut, stdErr = process.communicate()
+        rc = process.returncode
+        if (rc == 0):
+            e_success()
+        else:
+            e_error()
+            return False
+        
+        # unpack the file on the remote host and restore the snapshot
+        e_note("Unpacking file on host " + host)
+        cmd = ['ssh', '-p', port, user + "@" + host, 'xz -d < ' + filePath + ' | zfs receive ' + self.dataset]
+        process = Popen(cmd,  stdin=PIPE, stdout=PIPE, stderr=PIPE)
+        stdOut, stdErr = process.communicate()
+        rc = process.returncode
+        if (rc == 0):
+            e_success()
+        else:
+            e_error()
+            return False
+
+        # start the container on the remote host
+        e_note("Starting container " + self.name + " on host " + host)
+        cmd = ['ssh', '-p', port, user + "@" + host, 'tredly', 'start', 'container', self.uuid]
+        process = Popen(cmd,  stdin=PIPE, stdout=PIPE, stderr=PIPE)
+        stdOut, stdErr = process.communicate()
+        rc = process.returncode
+        if (rc == 0):
+            e_success()
+        else:
+            e_error()
+            print(stdOut.decode('UTF-8'))
+            return False
+
+        # Set the local dataset to be state "moved" instead of deleting it
+        zfsContainer.setProperty(ZFS_PROP_ROOT + ':containerstate', 'moved')
+
+        # remove the file on the remote and local hosts
+        e_note("Cleaning up local host")
+        cmd = ['rm', '-f', filePath]
+        process = Popen(cmd,  stdin=PIPE, stdout=PIPE, stderr=PIPE)
+        stdOut, stdErr = process.communicate()
+        rc = process.returncode
+        if (rc == 0):
+            e_success()
+        else:
+            e_error()
+        
+        e_note("Cleaning up remote host")
+        cmd = ['ssh', '-p', port, user + "@" + host, 'rm', '-f', filePath]
+        process = Popen(cmd,  stdin=PIPE, stdout=PIPE, stderr=PIPE)
+        stdOut, stdErr = process.communicate()
+        rc = process.returncode
+        if (rc == 0):
+            e_success()
+        else:
+            e_error()
+        
+        return True
