@@ -2,6 +2,7 @@
 import builtins
 import os.path
 import re
+import yaml
 
 from includes.util import *
 from includes.output import *
@@ -12,7 +13,8 @@ class ConfigFile:
     def __init__(self, filePath = None):
         if (filePath is None):
             filePath = builtins.tredlyConfDirectory + "/tredly-host.conf"
-            
+        
+        # TODO: the following is deprecated and will be removed in a future release
         self.filePath = filePath
         self.required = []
         self.wif = None
@@ -25,6 +27,9 @@ class ConfigFile:
         self.tld = None
         self.vnetDefaultRoute = None
         self.firewallEnableLogging = None
+        
+        # for YAML
+        self.json = None
 
     # Action: process a config file - populates this class
     #
@@ -38,17 +43,17 @@ class ConfigFile:
         # check if the file exists at the given path
         if (not self.fileExists()):
             e_error("Config file " + self.filePath + " does not exist.")
-            return False;
+            return False
         
         # file exists so process it
         with open(self.filePath) as configFile:
             for line in configFile:
                 # strip off leading and following whitespace
-                line = line.strip();
+                line = line.strip()
                 
                 # if this line has data then process it
                 if ((len(line) > 0) and (not line.startswith('#'))):
-                    key, value = line.partition("=")[::2];
+                    key, value = line.partition("=")[::2]
                     
                     # populate only if there was a value
                     if (len(value) > 0):
@@ -59,16 +64,16 @@ class ConfigFile:
                             # strip any whitespace
                             map(str.strip, values)
                             
-                            self.required = values;
+                            self.required = values
                         
                         elif (key == "wif"):
-                            self.wif = value;
+                            self.wif = value
                         
                         elif (key == "lif"):
-                            self.lif = value;
+                            self.lif = value
                         
                         elif (key == "wifPhysical"):
-                            self.wifPhysical = value;
+                            self.wifPhysical = value
                         
                         elif (key == "lifNetwork"):
                             values = value.split('/')
@@ -77,24 +82,37 @@ class ConfigFile:
                             self.lifCIDR = values[1]
                         
                         elif (key == "dns"):
-                            self.dns.append(value);
+                            self.dns.append(value)
                         
                         elif (key == "httpproxy"):
-                            self.httpProxyIP = value;
+                            self.httpProxyIP = value
                         
                         elif (key == "tld"):
-                            self.tld = value;
+                            self.tld = value
                         
                         elif (key == "vnetdefaultroute"):
-                            self.vnetDefaultRoute = value;
+                            self.vnetDefaultRoute = value
                             
                         elif (key == "firewallEnableLogging"):
-                            self.firewallEnableLogging = value;
+                            self.firewallEnableLogging = value
                         else:
-                            e_warning("Unrecognised config definition: " + line);
+                            e_warning("Unrecognised config definition: " + line)
         
         return True
-    
+
+    # Action: parses a YAML config file
+    #
+    # Pre: 
+    # Post: this object has been populated with data from the config file
+    #
+    # Params: 
+    #
+    # Return: True if exists, False otherwise
+    def processYaml(self):
+        file = open(self.filePath, 'r')
+        
+        self.json = yaml.load(file.read())
+
     # Action: checks whether the path to the tredlyfile exists or not
     #
     # Pre: 
@@ -104,7 +122,9 @@ class ConfigFile:
     #
     # Return: True if exists, False otherwise
     def fileExists(self):
-        return os.path.isfile(self.filePath);
+        return os.path.isfile(self.filePath)
+
+    # TODO: validate YAML
 
     # Action: validates this object
     #

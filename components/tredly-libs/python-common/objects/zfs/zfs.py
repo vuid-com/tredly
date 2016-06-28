@@ -47,16 +47,16 @@ class ZFSDataset:
             return True;
         
         # create the zfs dataset with the given mountpoint
-        process = Popen(['zfs', 'create', '-pu', '-o', 'mountpoint=' + self.mountPoint, self.dataset],  stdin=PIPE, stdout=PIPE, stderr=PIPE);
-        stdOut, stdErr = process.communicate();
-        rc = process.returncode;
+        process = Popen(['zfs', 'create', '-pu', '-o', 'mountpoint=' + self.mountPoint, self.dataset],  stdin=PIPE, stdout=PIPE, stderr=PIPE)
+        stdOut, stdErr = process.communicate()
+        rc = process.returncode
         
         # check exit code from zfs create
         if (rc != 0):
             # failed so return
-            return False;
+            return False
         
-        return True;
+        return True
 
     # Action: destroy a ZFS dataset
     #
