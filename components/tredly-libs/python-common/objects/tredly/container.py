@@ -1454,10 +1454,10 @@ class Container:
     # Pre: container dataset exists
     # Post: this container has been stopped and all relevant files (nginx/unbound etc) have been cleaned up
     #
-    # Params: 
+    # Params: destroying - a flag on whether or not this container will be destroyed after stop. used to run ondestroy commands before the container stops.
     #
     # Return: True if succeeded, False otherwise
-    def stop(self):
+    def stop(self, destroying = False):
         tredlyHost = TredlyHost()
         
         zfsContainer = ZFSDataset(self.dataset, self.mountPoint)
@@ -1681,6 +1681,14 @@ class Container:
             if (self.onStopScript is not None):
                 e_note("Running onStop script")
                 if (self.runCmd('sh -c "' + self.onStopScript + '"')):
+                    e_success("Success")
+                else:
+                    e_error("Failed")
+            
+            # run the ondestroy script if the destroy flag is set and we have a destroy script
+            if (destroying) and (self.onDestroyScript is not None):
+                e_note("Running onDestroy script")
+                if (self.runCmd('sh -c "' + self.onDestroyScript + '"')):
                     e_success("Success")
                 else:
                     e_error("Failed")
@@ -2042,8 +2050,8 @@ class Container:
         stdOut, stdErr = process.communicate()
         if (process.returncode != 0):
             # errored
-            print(str(stdOut))
-            print(str(stdErr))
+            print(stdOut.decode('UTF-8'))
+            print(stdErr.decode('UTF-8'))
             return False
         
         return True
@@ -2066,13 +2074,13 @@ class Container:
             # put the shebang into the file
             print("#!/usr/bin/env sh", file=script)
             
-            # loop over the create commands
-            for stopCmd in self.onStop:
-                if (stopCmd['type'] == "exec"):
+            # loop over the commands
+            for cmd in commands:
+                if (cmd['type'] == "exec"):
                     # put the command into the onstop file
-                    print(stopCmd['value'], file=script)
+                    print(cmd['value'], file=script)
                 else:
-                    e_warning("Unknown command " + stopCmd['type'])
+                    e_warning("Unknown command " + cmd['type'])
         
         # set the file's permissions
         os.chmod(fullFilePath, 0o700)

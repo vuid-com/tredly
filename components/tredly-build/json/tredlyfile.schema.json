@@ -530,6 +530,9 @@
                         },
                         "onCreate": {
                             "$ref": "#/definitions/arrayOfOperations"
+                        },
+                        "onDestroy": {
+                            "$ref": "#/definitions/arrayOfOperations"
                         }
                     }
                 }
