@@ -430,6 +430,3 @@ class ZFSDataset:
         stdOut, stdErr = xzResult.communicate()
         
         return (xzResult.returncode == 0)
-
-
-        

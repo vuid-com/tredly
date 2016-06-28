@@ -32,12 +32,24 @@ class ActionMove:
     
     # move a container to a new host
     def moveContainer(self, containerUuid, host):
-        # TODO: Checks:
-        # make sure the container exists
-        # make sure the destination host partition exists
         
         tredlyHost = TredlyHost()
+        # Checks:
+        if (containerUuid is None):
+            e_error("Please include a UUID to move.")
+            exit(1)
+            
+        if (host is None):
+            e_error("Please include a host to move to")
+            exit(1)
         
+        # make sure the container exists
+        if (not tredlyHost.containerExists(containerUuid)):
+            e_error("Container " + containerUuid + " does not exist")
+            exit(1)
+        
+        # TODO: make sure the destination host partition exists
+
         # get the partition name
         partitionName = tredlyHost.getContainerPartition(containerUuid)
         
@@ -47,4 +59,8 @@ class ActionMove:
         container = Container()
         container.loadFromZFS(localDataset)
         
-        container.moveToHost(host)
+        e_header("Moving container " + containerUuid + " to host " + host)
+        
+        # move the container, and exit 1 if it fails
+        if (not container.moveToHost(host)):
+            exit(1)
