@@ -46,7 +46,9 @@ class Container:
         self.dns = []                    # list of dns servers this container uses
         self.layer4Proxy = None
         self.onCreate = []
+        self.onStart = []
         self.onStop = []
+        self.onDestroy = []
         self.urls = []                    # list of translated urls from tredlyfile
         self.replicate = None
         self.maxCpu = None                  # maximum cpu available to this container
@@ -73,6 +75,8 @@ class Container:
         self.allowQuotas = None            # Allows quotas to be applied on container filesystems.
         self.mountPoint = None              
         self.onStopScript = None            # The location within the container of the script to run on stop
+        self.onStartScript = None          # the location within the container of the script ot run on start
+        self.onDestroyScript = None
         self.nginxUpstreamDir = None      # The directory on the host where nginx upstream files are kept
         self.nginxServernameDir = None    # The directory on the host where nginx servername files are kept
         self.nginxAccessfileDir = None    # The directory on the host where nginx access files are kept
@@ -138,11 +142,26 @@ class Container:
         self.ipv4Whitelist = builtins.tredlyFile.json['container']['firewall']['ipv4Whitelist']
         self.layer4Proxy = builtins.tredlyFile.json['container']['proxy']['layer4Proxy']
         self.onCreate = builtins.tredlyFile.json['container']['operations']['onCreate']
-        self.onStop = builtins.tredlyFile.json['container']['operations']['onStop']
         self.urls = builtins.tredlyFile.json['container']['proxy']['layer7Proxy']
         self.replicate = builtins.tredlyFile.json['container']['replicate']
         self.startOrder = builtins.tredlyFile.json['container']['startOrder']
         self.technicalOptions = builtins.tredlyFile.json['container']['technicalOptions']
+        
+        # get the scripts
+        try:
+            self.onStart = builtins.tredlyFile.json['container']['operations']['onStart']
+        except KeyError:
+            self.onStart = []
+            
+        try:
+            self.onStop = builtins.tredlyFile.json['container']['operations']['onStop']
+        except KeyError:
+            self.onStop = []
+        
+        try:
+            self.onDestroy = builtins.tredlyFile.json['container']['operations']['onDestroy']
+        except KeyError:
+            self.onDestroy = []
         
         # ignore the unlimited value as it is the same as none
         if (builtins.tredlyFile.json['container']['resourceLimits']['maxCpu'] == 'unlimited'):
@@ -172,8 +191,6 @@ class Container:
             self.dns = builtins.tredlyCommonConfig.dns
         else:
             self.dns = builtins.tredlyFile.json['container']['customDNS']
-            
-        self.onStopScript = None
         
         # domain name = partition name + tld
         self.domainName = self.partitionName + '.' + builtins.tredlyCommonConfig.tld
@@ -746,7 +763,9 @@ class Container:
         self.ip4SaddrSel = zfsContainer.getProperty(ZFS_PROP_ROOT + ":ip4_saddrsel")
         self.domainName = zfsContainer.getProperty(ZFS_PROP_ROOT + ":domainname")
         self.buildEpoch = zfsContainer.getProperty(ZFS_PROP_ROOT + ":buildepoch")
+        self.onStartScript = zfsContainer.getProperty(ZFS_PROP_ROOT + ":onstartscript")
         self.onStopScript = zfsContainer.getProperty(ZFS_PROP_ROOT + ":onstopscript")
+        self.onDestroyScript = zfsContainer.getProperty(ZFS_PROP_ROOT + ":ondestroyscript")
         self.hostIface = zfsContainer.getProperty(ZFS_PROP_ROOT + ":host_iface")
         self.releaseName = zfsContainer.getProperty(ZFS_PROP_ROOT + ":releasename")
         self.hostname = self.name
@@ -1313,13 +1332,48 @@ class Container:
         # get the start times back from ZFS
         startTimes = zfsContainer.getArray(ZFS_PROP_ROOT + '.startepoch')
 
-        # if this is the first time this container has started then run the oncreate commands and set up the onstop script
+        # if this is the first time this container has started then run the oncreate commands and set up the onstart/stop scripts
         if (len(startTimes) == 1):
             # run the on create commands
             self.runOnCreateCmds()
 
+            # create teh onstart script
+            e_note("Creating onStart script")
+            self.onStartScript = '/etc/rc.onstart'
+            if (self.createScript(self.onStartScript, self.onStart)):
+                # place onstartscript into ZFS
+                zfsContainer.setProperty(ZFS_PROP_ROOT + ":onstartscript", self.onStartScript)
+                e_success()
+            else:
+                e_error()
+
             # create the onstop script
-            self.createOnStopScript()
+            e_note("Creating onStop script")
+            self.onStopScript = '/etc/rc.onstop'
+            if (self.createScript(self.onStopScript, self.onStop)):
+                # place onstopscript into ZFS
+                zfsContainer.setProperty(ZFS_PROP_ROOT + ":onstopscript", self.onStopScript)
+                e_success()
+            else:
+                e_error()
+                
+            # create the onstop script
+            e_note("Creating onDestroy script")
+            self.onDestroyScript = '/etc/rc.ondestroy'
+            if (self.createScript(self.onDestroyScript, self.onDestroy)):
+                # place onstopscript into ZFS
+                zfsContainer.setProperty(ZFS_PROP_ROOT + ":ondestroyscript", self.onDestroyScript)
+                e_success()
+            else:
+                e_error()
+        
+        # check if an onstart script is set and if so, run it
+        if (self.onStartScript is not None):
+            e_note("Running onStart script")
+            if (self.runCmd('sh -c "' + self.onStartScript + '"')):
+                e_success("Success")
+            else:
+                e_error("Failed")
         
         # set up the container's hostname in DNS
         e_note("Adding container to DNS")
@@ -1994,41 +2048,34 @@ class Container:
         
         return True
     
-    # Action: creates an onstop script within this container based upon the onstop commands
+    # Action: creates a script within this container based upon the given commands
     #
     # Pre: this container dataset exists
-    # Post: /etc/rc.onstop has been created with onstop commands
+    # Post: filePath (within container) has been created with onstop commands
     #
-    # Params: 
+    # Params: filePath - the path to the file to create
+    #         commands - a list of commands to run
     #
     # Return: True if succeeded, False otherwise
-    def createOnStopScript(self):
-        # set the onstop script location
-        self.onStopScript = "/etc/rc.onstop"
-        
-        e_note("Creating onStop script")
+    def createScript(self, filePath, commands):
+        # set the full path for the host
+        fullFilePath = self.mountPoint + '/root' + filePath
         
         # open the onstop script and write in the commands
-        with open(self.mountPoint + '/root' + self.onStopScript, "w") as onstop_script:
+        with open(fullFilePath, "w") as script:
             # put the shebang into the file
-            print("#!/usr/bin/env sh", file=onstop_script)
+            print("#!/usr/bin/env sh", file=script)
             
             # loop over the create commands
             for stopCmd in self.onStop:
                 if (stopCmd['type'] == "exec"):
                     # put the command into the onstop file
-                    print(stopCmd['value'], file=onstop_script)
+                    print(stopCmd['value'], file=script)
                 else:
-                    print("Unknown command " + stopCmd['type'])
+                    e_warning("Unknown command " + stopCmd['type'])
         
         # set the file's permissions
-        os.chmod(self.mountPoint + '/root' + self.onStopScript, 0o700)
-        
-        # place onstopscript into ZFS
-        zfsContainer = ZFSDataset(self.dataset, self.mountPoint)
-        zfsContainer.setProperty(ZFS_PROP_ROOT + ":onstopscript", self.onStopScript)
-        
-        e_success("Success")
+        os.chmod(fullFilePath, 0o700)
         
         return True
         
