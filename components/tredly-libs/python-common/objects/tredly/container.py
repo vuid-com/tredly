@@ -1948,7 +1948,7 @@ class Container:
     
     # Action: run the oncreate commands within this container
     #
-    # Pre: container dataset exists
+    # Pre: container dataset exists, container is started
     # Post: oncreate commands have been run within this container
     #
     # Params: 
@@ -1957,7 +1957,7 @@ class Container:
     def runOnCreateCmds(self):
         # loop over the create commands
         for createCmd in self.onCreate:
-            if (createCmd['type'] == "exec"):    # ONSTART COMMANDS
+            if (createCmd['type'] == "exec"):    # ONCREATE COMMANDS
                 e_note('Running onStart command: "' +  createCmd['value'] +'"')
                 
                 # run it
