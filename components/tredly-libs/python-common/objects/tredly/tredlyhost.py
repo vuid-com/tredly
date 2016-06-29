@@ -160,7 +160,7 @@ class TredlyHost:
         
         # loop over the results looking for our value
         for line in iter(stdOut.splitlines()):
-            # check if it matches our containergroup
+            # check if it matches our partition
             if (re.match("^" + dataset + "/.*$", line)):
                 # get the uuid and append to our list
                 containerList.append(line.split('/')[-1])

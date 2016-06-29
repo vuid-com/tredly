@@ -1859,7 +1859,6 @@ class Container:
         # set the container whitelist table up in this container
         for ip4 in self.ipv4Whitelist:
             self.firewall.appendTable(3, ip4)
-
             
         # Set the partition whitelist table up in this new container
         zfsPartition = ZFSDataset('zroot/tredly/ptn/' + self.partitionName)

@@ -3,7 +3,9 @@
 # TODO: note that maxCpu and MaxRam are only set in ZFS and don't actually limit anything just yet
 
 from objects.zfs.zfs import ZFSDataset
+from objects.tredly.container import Container
 from includes.defines import *
+from includes.output import *
 
 import os
 
@@ -11,8 +13,9 @@ class Partition:
     # Constructor
     def __init__(self, name, maxHdd = None, maxCpu = None, maxRam = None, publicIps = [], ip4Whitelist = []):
         self.name = name
-        self.maxHdd = int(maxHdd)    # int in megabytes
-        self.maxRam = int(maxRam)    # int in megabytes
+        self.maxHdd = maxHdd    # in megabytes
+        self.maxRam = maxRam    # in megabytes
+        self.maxCpu = None
         
         # check if maxCpu was a percentage and apply accordingly
         if (maxCpu is not None):
@@ -24,15 +27,78 @@ class Partition:
                 self.maxCpu = int(maxCpu) * 100
         
         # lists
-        self.publicIps = publicIps          # list of public ips assigned to this partition
-        self.ip4Whitelist = ip4Whitelist    # list of ip addresses whitelisted for this partition
+        if (publicIps is not None):
+            self.publicIps = publicIps          # list of public ips assigned to this partition
+        else:
+            self.publicIps = []
+            
+        if (ip4Whitelist is not None):
+            self.ip4Whitelist = ip4Whitelist    # list of ip addresses whitelisted for this partition
+        else:
+            self.ip4Whitelist = []
         
         # set up our dataset and mountpoint
         self.dataset = ZFS_TREDLY_PARTITIONS_DATASET + '/' + self.name
         self.mountpoint = TREDLY_PARTITIONS_MOUNT + '/' + self.name
         
 
+    # Action: get a list of containers within this partition
+    #
+    # Pre: partition exists
+    # Post: 
+    #
+    # Params:
+    #
+    # Return: list of Container objects
+    def getContainers(self):
+        # form the base dataset to search in
+        dataset = self.dataset + "/" + TREDLY_CONTAINER_DIR_NAME
+        
+        # get a list of the containers
+        cmd = ['zfs', 'list', '-H', '-r', '-o' 'name', dataset]
+        process = Popen(cmd, stdin=PIPE, stdout=PIPE, stderr=PIPE)
+        stdOut, stdErr = process.communicate()
+        if (process.returncode != 0):
+            e_error("Failed to get list of partition members")
+            return None
+        
+        # convert stdout to string
+        stdOut = stdOut.decode(encoding='UTF-8').rstrip()
+        
+        # create a list to pass back
+        containerList = []
+        
+        # loop over the results looking for our value
+        for line in iter(stdOut.splitlines()):
+            # check if it matches our partition
+            if (re.match("^" + dataset + "/.*$", line)):
+                # get the uuid and append to our list
+                uuid = line.split('/')[-1]
+                
+                container = Container()
+                
+                # make the container populate itself from zfs
+                container.loadFromZFS(dataset + "/" + uuid)
+                
+                # append to the list
+                containerList.append(container)
+        
+        return containerList
+    
+    # Action: checks to see if this partition exists already or not
+    #
+    # Pre: 
+    # Post: 
+    #
+    # Params: 
+    #
+    # Return: True if exists, False otherwise
+    def exists(self):
+        # set up a zfs object
+        zfsPartition = ZFSDataset(self.dataset, self.mountpoint)
 
+        return zfsPartition.exists()
+    
     # Action: creates this partition within zfs
     #
     # Pre: 
@@ -44,17 +110,16 @@ class Partition:
     def create(self):
         ### pre flight checks
         
-        # set up a zfs object
-        zfsPartition = ZFSDataset(self.dataset, self.mountpoint)
-        
         # ensure that this partition doesnt already exist
-        if (zfsPartition.exists()):
+        if (self.exists()):
             return False
         
         # End pre flight checks
         
         e_header("Creating partition " + self.name)
 
+        zfsPartition = ZFSDataset(self.dataset, self.mountpoint)
+        
         e_note("Creating ZFS datasets")
         returnCode = True
         
@@ -128,27 +193,34 @@ class Partition:
         if (len(self.ip4Whitelist) > 0):
             e_note("Applying Whitelist.")
             
+            # TODO: set it in the zfs dataset
             
-        '''
-        # Set the whitelist
-        if partition_ipv4whitelist_create _whitelistArray[@] "${_partitionName}"; then
-            # apply whitelist to partition members
-            if ipfw_container_update_partition_members "${_partitionName}"; then
-                if [[ "${_silent}" != "true" ]]; then
-                    e_success "Success"
+            # apply the whitelist
+            if (self.applyWhitelist()):
+                e_success()
+            else:
+                e_error()
+
+            '''
+            # Set the whitelist
+            if partition_ipv4whitelist_create _whitelistArray[@] "${_partitionName}"; then
+                # apply whitelist to partition members
+                if ipfw_container_update_partition_members "${_partitionName}"; then
+                    if [[ "${_silent}" != "true" ]]; then
+                        e_success "Success"
+                    fi
+                else
+                    if [[ "${_silent}" != "true" ]]; then
+                        e_error "Failed"
+                    fi
                 fi
             else
                 if [[ "${_silent}" != "true" ]]; then
                     e_error "Failed"
                 fi
             fi
-        else
-            if [[ "${_silent}" != "true" ]]; then
-                e_error "Failed"
-            fi
         fi
-    fi
-    '''
+        '''
     '''
     TODO: add this to the tredly-host part
     # ensure received units are correct
@@ -169,3 +241,31 @@ class Partition:
         fi
     fi
 '''
+    # Action: apply the container whitelist to all containers in this partition
+    #
+    # Pre: partition exists
+    # Post: containers within partition have had their partition whitelists updated
+    #
+    # Params: 
+    #
+    # Return: True if succeeded, False otherwise
+    def applyWhitelist(self):
+        returnCode = True
+        
+        # if we have no whitelist then do nothing
+        if (len(self.ip4Whitelist) == 0):
+            return True
+        
+        # get a list of containers in this partition
+        containers = self.getContainers()
+        
+        # loop over the containers and apply their whitelists to ipfw and layer 7 proxy
+        for container in containers:
+            # apply to IPFW
+            for ip4 in self.ip4Whitelist:
+                self.firewall.appendTable(CONTAINER_IPFW_WL_TABLE_PARTITION, ip4)
+            
+            # apply the firewall table and get the return value
+            returnCode = (returnCode & self.firewall.apply())
+            
+            # TODO: apply to layer 7 proxy

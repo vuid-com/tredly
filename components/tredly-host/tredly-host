@@ -64,9 +64,16 @@ argParser.add_argument('subject', nargs='?', help='container etc')
 argParser.add_argument('target', nargs='?', help='partition etc')
 argParser.add_argument('identifier', nargs='?', help='identifier - uuid etc')
 
+argParser.add_argument('--maxcpu', help='Set max CPU')
+argParser.add_argument('--maxram', help='Set max RAM')
+argParser.add_argument('--maxhdd', help='Set max HDD')
+argParser.add_argument('--ipv4whitelist', help='Set ip4 whitelist')
+argParser.add_argument('--publicips', help='Set public ips')
+
 argParser.add_argument('-d', '--debug', action='store_true', help='Enable debug mode')
 argParser.add_argument('--verbose', action='store_true', help='Enable verbose mode')
 argParser.add_argument('-v', '--version', action='store_true', help='Show version')
+
 
 # parse args
 args = argParser.parse_args()
@@ -79,6 +86,13 @@ if (args.action == "version"):
     print(SCRIPTNAME + ": version " + VERSION_NUMBER + " (built " + VERSION_DATE + ")")
     exit(0)
 
+# populate the action args
+actionArgs['maxCpu'] = args.maxcpu
+actionArgs['maxRam'] = args.maxram
+actionArgs['maxHdd'] = args.maxhdd
+actionArgs['ipv4Whitelist'] = args.ipv4whitelist
+actionArgs['publicIps'] = args.publicips
+
 # get a tredlyhost object
 tredlyHost = TredlyHost()
 
@@ -89,7 +103,6 @@ if (args.debug):
 # enable verbose mode if requested
 if (args.verbose):
     VERBOSE = True
-
 
 # make sure the base ZFS datasets are present
 zfsTredly = ZFSDataset(ZFS_TREDLY_DATASET)
@@ -117,7 +130,7 @@ builtins.tredlyCommonConfig = ConfigFile()
 # parse it
 builtins.tredlyCommonConfig.process()
 
-# validate hte common config
+# validate the common config
 if (not builtins.tredlyCommonConfig.validate()):
     exit_with_error("Failed to validate tredly-host.conf")
 

@@ -250,3 +250,28 @@ def validateIp4Addr(ip4Addr):
             return False
         
     return True
+
+# checks whether a given value is an int or not
+def isInt(value):
+    try: 
+        int(value)
+        return True
+    except ValueError:
+        return False
+
+# validates that a given string is in the format <int><char>, eg 32G
+def isValidSizeUnit(string, validUnits = ['b', 'k', 'm', 'g', 't']):
+    # where string == 32G
+    value = string[:-1]         # == 32
+    unit = string[-1].lower()   # == G
+
+    # check if the value is an int
+    if (not isInt(value)):
+        return False
+
+    # check that the unit is in our valid units list
+    if (unit not in validUnits):
+        return False
+    
+    # all checks passed
+    return True
