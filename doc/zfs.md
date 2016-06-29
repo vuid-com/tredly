@@ -89,7 +89,7 @@ None
 
 ## Partition Properties
 * quota - max disk usage
-* com.tredly:partitionname - name of partition
+* com.tredly:partition - name of partition
 * com.tredly:maxcpu - max amount of cpu for this partition
 * com.tredly:maxram - max amount of ram for this partition
 * com.tredly:nginx_whitelist_accessfile - the path to the nginx whitelist access file for this partition
