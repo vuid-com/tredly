@@ -13,19 +13,18 @@ from includes.defines import *
 from includes.output import *
 
 
-class ActionCreate:
+class ActionModify:
     def __init__(self, subject, target, identifier, actionArgs):
         
         # check the subject of this action
         if (subject == "partition"):
-            
-            self.createPartition(target, actionArgs['maxCpu'], actionArgs['maxHdd'], actionArgs['maxRam'], actionArgs['ipv4Whitelist'],  actionArgs['publicIps'])
+            self.modifyPartition(target, actionArgs['maxCpu'], actionArgs['maxHdd'], actionArgs['maxRam'], actionArgs['ipv4Whitelist'],  actionArgs['publicIps'], actionArgs['partitionName'])
         else:
             e_error("No command " + subject + " found.")
             exit(1)
 
     # Create a partition
-    def createPartition(self, partitionName, maxCpu = None, maxHdd = None, maxRam = None, ip4Whitelist = None, publicIps = None):
+    def modifyPartition(self, partitionName, maxCpu = None, maxHdd = None, maxRam = None, ip4Whitelist = None, publicIps = None, newName = None):
         
         ### Pre flight checks
         # check that the data we received is correct
@@ -50,7 +49,6 @@ class ActionCreate:
             if (not isValidSizeUnit(maxRam)):
                 e_error("maxram value " + maxRam + " is not valid")
                 exit(1)
-                
         
         # turn the whitelist into a list of IPv4Address and validate at the same time
         ip4WhitelistList = []
@@ -78,12 +76,12 @@ class ActionCreate:
         #######
         
         # create a partition object
-        partition = Partition(partitionName, maxHdd, maxCpu, maxRam, publicIpList, ip4WhitelistList)
+        partition = Partition(partitionName, maxHdd, maxCpu, maxRam, publicIpList, ip4WhitelistList, newName)
         
-        e_header("Creating partition " + partitionName)
+        e_header("Modifying partition " + partitionName)
         
-        if (partition.exists()):
-            e_error("Partition already exists.")
+        if (not partition.exists()):
+            e_error("Partition does not exist.")
             exit(1)
         
-        partition.create()
+        partition.modify()

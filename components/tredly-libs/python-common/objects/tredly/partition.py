@@ -7,12 +7,26 @@ from objects.tredly.container import Container
 from includes.defines import *
 from includes.output import *
 
+from subprocess import Popen, PIPE
 import os
+import re
 
 class Partition:
     # Constructor
-    def __init__(self, name, maxHdd = None, maxCpu = None, maxRam = None, publicIps = [], ip4Whitelist = []):
+    def __init__(self, name, maxHdd = None, maxCpu = None, maxRam = None, publicIps = [], ip4Whitelist = [], newName = None):
+        # set up our dataset and mountpoint
+        self.dataset = ZFS_TREDLY_PARTITIONS_DATASET + '/' + name
+        self.mountpoint = TREDLY_PARTITIONS_MOUNT + '/' + name
+        
+        # set up a zfs object to use in this object
+        self.zfs = ZFSDataset(self.dataset, self.mountpoint)
+        
+        # if this dataset exists then load all data from zfs
+        if (self.exists()):
+            self.loadFromZFS()
+        
         self.name = name
+        self.newName = newName
         self.maxHdd = maxHdd    # in megabytes
         self.maxRam = maxRam    # in megabytes
         self.maxCpu = None
@@ -21,10 +35,10 @@ class Partition:
         if (maxCpu is not None):
             if (maxCpu.endswith('%')):
                 # strip off the percentage and turn it into an int
-                self.maxCpu = int(maxCpu.rstrip('%'))
+                self.maxCpu = maxCpu.rstrip('%')
             else:
                 # this is in cores, so turn it into a percentage. 1 core == 100%
-                self.maxCpu = int(maxCpu) * 100
+                self.maxCpu = str(int(maxCpu) * 100)
         
         # lists
         if (publicIps is not None):
@@ -37,11 +51,33 @@ class Partition:
         else:
             self.ip4Whitelist = []
         
-        # set up our dataset and mountpoint
-        self.dataset = ZFS_TREDLY_PARTITIONS_DATASET + '/' + self.name
-        self.mountpoint = TREDLY_PARTITIONS_MOUNT + '/' + self.name
-        
 
+    # Action: load all values from zfs into this object
+    #
+    # Pre: partition exists
+    # Post: this object has been populated with values from ZFS
+    #
+    # Params:
+    #
+    # Return: True if successful, False otherwise
+    def loadFromZFS(self):
+        # return false if this dataset does not exist
+        if (not self.exists()):
+            return False
+        
+        # name is mandatory
+        self.name = self.zfs.getProperty(ZFS_PROP_ROOT + ':partition')
+        
+        self.maxHdd = self.zfs.getProperty('quota')
+        self.maxRam = self.zfs.getProperty(ZFS_PROP_ROOT + ':maxram')
+        self.maxCpu = self.zfs.getProperty(ZFS_PROP_ROOT + ':maxcpu')
+
+        # zfs arrays
+        self.publicIps = self.zfs.getArray(ZFS_PROP_ROOT + '.publicips')
+        self.ip4Whitelist = self.zfs.getArray(ZFS_PROP_ROOT + '.ptn_ip4whitelist')
+
+        return True
+    
     # Action: get a list of containers within this partition
     #
     # Pre: partition exists
@@ -94,12 +130,9 @@ class Partition:
     #
     # Return: True if exists, False otherwise
     def exists(self):
-        # set up a zfs object
-        zfsPartition = ZFSDataset(self.dataset, self.mountpoint)
-
-        return zfsPartition.exists()
+        return self.zfs.exists()
     
-    # Action: creates this partition within zfs
+    # Action: creates this partition
     #
     # Pre: 
     # Post: partition has been created
@@ -115,35 +148,31 @@ class Partition:
             return False
         
         # End pre flight checks
-        
-        e_header("Creating partition " + self.name)
 
-        zfsPartition = ZFSDataset(self.dataset, self.mountpoint)
-        
         e_note("Creating ZFS datasets")
         returnCode = True
         
         # create the partition dataset
-        returnCode = (returnCode & zfsPartition.create())
+        returnCode = (returnCode & self.zfs.create() & self.zfs.mount())
         
         # create the child datasets of this partition
         
         # /cntr
         zfsPartitionContainers = ZFSDataset(self.dataset + '/' + TREDLY_CONTAINER_DIR_NAME, self.mountpoint + '/' + TREDLY_CONTAINER_DIR_NAME)
-        returnCode = (returnCode & zfsPartitionContainers.create())
+        returnCode = (returnCode & zfsPartitionContainers.create() & zfsPartitionContainers.mount())
         
         # /data
         zfsPartitionData = ZFSDataset(self.dataset + '/' + TREDLY_PTN_DATA_DIR_NAME, self.mountpoint + '/' + TREDLY_PTN_DATA_DIR_NAME)
-        returnCode = (returnCode & zfsPartitionData.create())
+        returnCode = (returnCode & zfsPartitionData.create() & zfsPartitionData.mount())
         
         # /remotecontainers
         zfsPartitionRemoteCntr = ZFSDataset(self.dataset + '/' + TREDLY_PTN_REMOTECONTAINERS_DIR_NAME, self.mountpoint + '/' + TREDLY_PTN_REMOTECONTAINERS_DIR_NAME)
-        returnCode = (returnCode & zfsPartitionRemoteCntr.create())
+        returnCode = (returnCode & zfsPartitionRemoteCntr.create() & zfsPartitionRemoteCntr.mount())
 
         # /psnt
         zfsPartitionPersistentStorage = ZFSDataset(self.dataset + '/' + TREDLY_PERSISTENT_STORAGE_DIR_NAME, self.mountpoint + '/' + TREDLY_PERSISTENT_STORAGE_DIR_NAME)
-        returnCode = (returnCode & zfsPartitionPersistentStorage.create())
-
+        returnCode = (returnCode & zfsPartitionPersistentStorage.create() & zfsPartitionPersistentStorage.mount())
+        self.zfs.listChildren()
         # create some default directories within the data dataset
         baseDataDir = self.mountpoint + '/' + TREDLY_PTN_DATA_DIR_NAME
         os.makedirs(baseDataDir + '/credentials')
@@ -151,7 +180,7 @@ class Partition:
         os.makedirs(baseDataDir + '/sslCerts')
         
         # set the partition name
-        returnCode = (returnCode & zfsPartition.setProperty(ZFS_PROP_ROOT + ':partition', self.name))
+        returnCode = (returnCode & self.zfs.setProperty(ZFS_PROP_ROOT + ':partition', self.name))
         
         if (returnCode):
             e_success()
@@ -163,7 +192,7 @@ class Partition:
         if (self.maxHdd is not None):
             e_note("Applying HDD value " + str(self.maxHdd))
             
-            if (zfsPartition.setProperty('quota', self.maxHdd) + 'M'):
+            if (self.applyMaxHdd()):
                 e_success()
             else:
                 e_error()
@@ -173,7 +202,7 @@ class Partition:
         if (self.maxCpu is not None):
             e_note("Applying CPU value " + str(self.maxCpu) + '%')
 
-            if (zfsPartition.setProperty(ZFS_PROP_ROOT + ':maxcpu', self.maxCpu)):
+            if (self.applyMaxCpu()):
                 e_success()
             else:
                 e_error()
@@ -181,9 +210,9 @@ class Partition:
 
         # apply RAM restrictions
         if (self.maxRam is not None):
-            e_note("Applying RAM value " + str(self.maxRam) + 'M')
+            e_note("Applying RAM value " + str(self.maxRam))
 
-            if (zfsPartition.setProperty(ZFS_PROP_ROOT + ':maxram', self.maxRam)):
+            if (self.applyMaxRam()):
                 e_success()
             else:
                 e_error()
@@ -191,57 +220,187 @@ class Partition:
 
         # apply ip4 whitelisting
         if (len(self.ip4Whitelist) > 0):
-            e_note("Applying Whitelist.")
-            
-            # TODO: set it in the zfs dataset
-            
-            # apply the whitelist
+            e_note("Applying Whitelist")
+
             if (self.applyWhitelist()):
                 e_success()
             else:
                 e_error()
+                return False
+        
+        # apply public ips
+        if (len(self.publicIps) > 0):
+            e_note("Applying Public IPs")
 
-            '''
-            # Set the whitelist
-            if partition_ipv4whitelist_create _whitelistArray[@] "${_partitionName}"; then
-                # apply whitelist to partition members
-                if ipfw_container_update_partition_members "${_partitionName}"; then
-                    if [[ "${_silent}" != "true" ]]; then
-                        e_success "Success"
-                    fi
-                else
-                    if [[ "${_silent}" != "true" ]]; then
-                        e_error "Failed"
-                    fi
-                fi
-            else
-                if [[ "${_silent}" != "true" ]]; then
-                    e_error "Failed"
-                fi
-            fi
-        fi
-        '''
-    '''
-    TODO: add this to the tredly-host part
-    # ensure received units are correct
-    if [[ -n "${_partitionHDD}" ]]; then
-        if ! is_valid_size_unit "${_partitionHDD}" "m,g"; then
-            exit_with_error "Invalid HDD specification: ${_partitionHDD}. Please use the format HDD=<size><unit>, eg HDD=1G."
-        fi
-    fi
-    if [[ -n "${_partitionCPU}" ]]; then
-        # make sure it was an int or included a percentage
-        if ! is_int "${_partitionCPU}" && [[ "${_partitionCPU: -1}" != '%' ]]; then
-            exit_with_error "Invalid CPU specification: ${_partitionCPU}. Please use the format CPU=<int> or CPU=<int>%, eg CPU=1"
-        fi
-    fi
-    if [[ -n "${_partitionRAM}" ]]; then
-        if ! is_valid_size_unit "${_partitionRAM}" "m,g"; then
-            exit_with_error "Invalid RAM specification: ${_partitionRAM}. Please use the format RAM=<size><unit>, eg RAM=1G."
-        fi
-    fi
-'''
-    # Action: apply the container whitelist to all containers in this partition
+            if (self.applyPublicIps()):
+                e_success()
+            else:
+                e_error()
+                return False
+        
+        # we made it to the end so return true
+        return True
+
+    # Action: sets the maxhdd value in ZFS
+    #
+    # Pre: this partition exists
+    # Post: partition has been updated
+    #
+    # Params: 
+    #
+    # Return: True if succeeded, False otherwise
+    def applyMaxHdd(self):
+        if (not self.zfs.setProperty('quota', self.maxHdd)):
+            return False
+        
+        return True
+
+    # Action: sets the maxcpu value in ZFS
+    #
+    # Pre: this partition exists
+    # Post: partition has been updated
+    #
+    # Params: 
+    #
+    # Return: True if succeeded, False otherwise
+    def applyMaxCpu(self):
+        if (not self.zfs.setProperty(ZFS_PROP_ROOT + ':maxcpu', self.maxCpu)):
+            return False
+        
+        return True
+
+    # Action: sets the maxram value in ZFS
+    #
+    # Pre: this partition exists
+    # Post: partition has been updated
+    #
+    # Params: 
+    #
+    # Return: True if succeeded, False otherwise
+    def applyMaxRam(self):
+        if (not self.zfs.setProperty(ZFS_PROP_ROOT + ':maxram', self.maxRam)):
+            return False
+        
+        return True
+
+    # Action: sets the public ips up for this partition
+    #
+    # Pre: this partition exists
+    # Post: public IPs have been set up
+    #
+    # Params: 
+    #
+    # Return: True if succeeded, False otherwise
+    
+    # this will set zfs and set up the public ips on an interface
+    # we will need a command to remove public ips from a partition
+    def applyPublicIps(self):
+        # TODO: set these ips up on an interface. Epair? Bridge? lifNetwork? Undecided as yet
+        
+        # set the zfs property array
+        for ip in self.publicIps:
+            # set it in zfs and get the status
+            if (not self.zfs.appendArray(ZFS_PROP_ROOT + '.publicips', ip)):
+                return False
+
+        return True
+
+    # Action: modifies this partition
+    #
+    # Pre: this partition exists
+    # Post: partition has been modified
+    #
+    # Params: 
+    #
+    # Return: True if succeeded, False otherwise
+    def modify(self):
+        ### pre flight checks
+        
+        # ensure that this partition exists as we are modifying it
+        if (not self.exists()):
+            e_error("Partition " + self.name + " does not exist")
+            return False
+        
+        # ensure that the new partition name doesnt already exist
+        if (self.newName is not None):
+            newNamePartition = Partition(self.newName)
+            if (newNamePartition.exists()):
+                e_error("Cannot rename partition: partition " + self.newName + " already exists")
+                return False
+        
+        # ensure there are no containers built within this partition
+        zfsContainerList = ZFSDataset(self.dataset + '/' + TREDLY_CONTAINER_DIR_NAME, self.mountpoint + '/' + TREDLY_CONTAINER_DIR_NAME)
+        containerDatasets = zfsContainerList.listChildren()
+        if (len(containerDatasets) > 0):
+            e_error("Partition " + self.name + " currently has built containers. Please destroy them and run this command again.")
+            return False
+        
+        # End pre flight checks
+        
+        # apply HDD restrictions
+        if (self.maxHdd is not None):
+            e_note("Applying HDD value " + str(self.maxHdd))
+            
+            if (self.applyMaxHdd()):
+                e_success()
+            else:
+                e_error()
+                return False
+
+        # apply CPU restrictions
+        if (self.maxCpu is not None):
+            e_note("Applying CPU value " + str(self.maxCpu) + '%')
+
+            if (self.applyMaxCpu()):
+                e_success()
+            else:
+                e_error()
+                return False
+
+        # apply RAM restrictions
+        if (self.maxRam is not None):
+            e_note("Applying RAM value " + str(self.maxRam))
+
+            if (self.applyMaxRam()):
+                e_success()
+            else:
+                e_error()
+                return False
+
+        # apply ip4 whitelisting
+        if (len(self.ip4Whitelist) > 0):
+            e_note("Applying Whitelist")
+
+            if (self.applyWhitelist()):
+                e_success()
+            else:
+                e_error()
+                return False
+        
+        # apply public ips
+        if (len(self.publicIps) > 0):
+            e_note("Applying Public IPs")
+
+            if (self.applyPublicIps()):
+                e_success()
+            else:
+                e_error()
+                return False
+        
+        # if the new name was set then rename it
+        if (self.newName is not None):
+            if (self.zfs.rename(self.newName)):
+                # change the partition name
+                self.zfs.setProperty(ZFS_PROP_ROOT + ':partition', self.newName)
+                
+                e_success()
+            else:
+                e_error()
+                return False
+            
+        return True
+
+    # Action: apply the container whitelist to zfs and all containers in this partition
     #
     # Pre: partition exists
     # Post: containers within partition have had their partition whitelists updated
@@ -249,13 +408,13 @@ class Partition:
     # Params: 
     #
     # Return: True if succeeded, False otherwise
+    # TODO: untested, required for modify
     def applyWhitelist(self):
-        returnCode = True
-        
-        # if we have no whitelist then do nothing
-        if (len(self.ip4Whitelist) == 0):
-            return True
-        
+        # set the ips in zfs
+        for ip in self.ip4Whitelist:
+            if (not self.zfs.appendArray(ZFS_PROP_ROOT + '.ptn_ip4whitelist', ip)):
+                return False
+
         # get a list of containers in this partition
         containers = self.getContainers()
         
@@ -263,9 +422,13 @@ class Partition:
         for container in containers:
             # apply to IPFW
             for ip4 in self.ip4Whitelist:
-                self.firewall.appendTable(CONTAINER_IPFW_WL_TABLE_PARTITION, ip4)
+                if (not self.firewall.appendTable(CONTAINER_IPFW_WL_TABLE_PARTITION, ip4)):
+                    return False
             
-            # apply the firewall table and get the return value
-            returnCode = (returnCode & self.firewall.apply())
+            # apply the firewall table
+            if (not self.firewall.apply()):
+                return False
             
             # TODO: apply to layer 7 proxy
+
+        return True

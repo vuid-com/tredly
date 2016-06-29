@@ -3,10 +3,11 @@
 # Note that this class makes use of "ZFS Arrays". These are a non standard way of storing array data within ZFS
 # and are implemented solely for Tredly
 
-from subprocess import Popen, PIPE;
+from subprocess import Popen, PIPE
 import json
 
 from includes.output import *
+from objects.shell.tidycmd.tidycmd import TidyCmd
 
 class ZFSDataset:
     # Constructor
@@ -23,15 +24,10 @@ class ZFSDataset:
     #
     # Return: True if exists, False otherwise
     def exists(self):
-        process = Popen(['zfs', 'list', self.dataset],  stdin=PIPE, stdout=PIPE, stderr=PIPE);
-        stdOut, stdErr = process.communicate();
-        rc = process.returncode;
+        process = Popen(['zfs', 'list', self.dataset],  stdin=PIPE, stdout=PIPE, stderr=PIPE)
+        stdOut, stdErr = process.communicate()
         
-        # check the exit code
-        if (rc == 0):
-            return True;
-        else:
-            return False;
+        return (process.returncode == 0)
     
     # Action: create a ZFS dataset
     #
@@ -44,19 +40,13 @@ class ZFSDataset:
     def create(self):
         # make sure the dataset already exists
         if (self.exists()):
-            return True;
+            return True
         
         # create the zfs dataset with the given mountpoint
         process = Popen(['zfs', 'create', '-pu', '-o', 'mountpoint=' + self.mountPoint, self.dataset],  stdin=PIPE, stdout=PIPE, stderr=PIPE)
         stdOut, stdErr = process.communicate()
-        rc = process.returncode
         
-        # check exit code from zfs create
-        if (rc != 0):
-            # failed so return
-            return False
-        
-        return True
+        return (process.returncode == 0)
 
     # Action: destroy a ZFS dataset
     #
@@ -97,7 +87,7 @@ class ZFSDataset:
 
     # Action: mount a ZFS dataset
     #
-    # Pre: 
+    # Pre: dataset exists
     # Post: dataset has been mounted
     #
     # Params: 
@@ -111,10 +101,33 @@ class ZFSDataset:
         # create the zfs dataset with the given mountpoint
         process = Popen(['zfs', 'mount', self.dataset],  stdin=PIPE, stdout=PIPE, stderr=PIPE)
         stdOut, stdErr = process.communicate()
-        rc = process.returncode
         
         # check exit code from zfs create
-        return (rc == 0)
+        return (process.returncode == 0)
+
+    # Action: unmount a ZFS dataset
+    #
+    # Pre: dataset exists
+    # Post: dataset has been unmounted
+    #
+    # Params: force - whether or not to force the unmount
+    #
+    # Return: True if succeeded, False otherwise
+    def unmount(self, force = False):
+        # make sure the dataset already exists
+        if (not self.exists()):
+            return False
+        
+        # include the force flag if the user requested
+        if (force):
+            cmdList = ['zfs', 'umount', '-f', self.dataset]
+        else:
+            cmdList = ['zfs', 'umount', self.dataset]
+
+        cmd = TidyCmd(cmdList)
+        cmd.run()
+
+        return (cmd.returnCode == 0)
     
     # Action: check if this zfs dataset is mounted
     #
@@ -220,19 +233,13 @@ class ZFSDataset:
         if (value is None):
             value = '-'
         
-        cmd = ['zfs', 'set', property + '=' + value, self.dataset]
+        cmd = ['zfs', 'set', str(property) + '=' + str(value), self.dataset]
         process = Popen(cmd,  stdin=PIPE, stdout=PIPE, stderr=PIPE)
         stdOut, stdErr = process.communicate()
         rc = process.returncode
 
         # check the exit code
-        if (rc == 0):
-            # executed successfully
-            return True
-        else:
-            print(str(stdErr))
-            # command failed
-            return False
+        return (process.returncode == 0)
 
     # Action: unsets a ZFS property
     #
@@ -248,11 +255,8 @@ class ZFSDataset:
         result = Popen(cmd, stdout=PIPE)
         stdOut, stdErr = result.communicate()
         # check return code
-        if (result.returncode != 0):
-            e_error("An error occurred when deleting property + " + property + " from ZFS")
-            return False
+        return (result.returncode == 0)
 
-        return True
 
     # Action: add a value to a "property array"
     #
@@ -260,7 +264,7 @@ class ZFSDataset:
     # Post: requested property has been added at the requested location
     #
     # Params: property - the zfs property array to add to
-    #         value - the value to add
+    #         value - the value to add (string)
     #
     # Return: True if succeeded, False otherwise
     def appendArray(self, property, value):
@@ -430,3 +434,100 @@ class ZFSDataset:
         stdOut, stdErr = xzResult.communicate()
         
         return (xzResult.returncode == 0)
+
+    # Action: lists all child datasets of this dataset
+    #
+    # Pre: dataset exists
+    # Post: 
+    #
+    # Params:
+    #
+    # Return: List of strings
+    def listChildren(self):
+        lastdir = self.dataset.split('/')[-1]
+        
+        # use tidy cmd to pipe through to grep
+        cmd = TidyCmd(['zfs', 'list', '-d3', '-rH', '-o', 'name', self.dataset])
+        # exclude our dataset
+        cmd.appendPipe(['grep', '-Ev', lastdir + '$|*./root'])
+        # run the command
+        cmd.run()
+        
+        stdout = cmd.getStdOut().strip()
+
+        # split the stdout output into a List and return
+        return stdout.splitlines()
+    
+    # Action: changes the mount point for this dataset
+    #
+    # Pre: dataset exists
+    # Post: dataset mountpoint has been changed
+    #
+    # Params: newMountPoint - the new place to mount this dataset
+    #
+    # Return: True if successful, False otherwise
+    def changeMountPoint(self, newMountPoint, forceUnmount = False):
+        # unmount the dataset
+        if (not self.unmount(forceUnmount)):
+            print('wont unmount')
+        
+        # apply the new mountpoint
+        if (not self.setProperty('mountpoint', newMountPoint)):
+            return False
+
+        # remount it
+        if (not self.mount()):
+            return False
+        
+        return True
+    
+    # Action: renames this dataset within its current parent dataset
+    # Note that this will not MOVE a dataset, merely rename it within its current dataset level
+    #
+    # Pre: dataset exists
+    # Post: dataset has been renamed
+    #
+    # Params: newName - the name to rename it to
+    #
+    # Return: True if successful, False otherwise
+    def rename(self, newName):
+        # strip the name of the current dataset/mountpoint and append the new name
+        newDataset = self.dataset.rsplit('/', 1)[0] + '/' + newName
+        newMountpoint = self.dataset.rsplit('/', 1)[0] + '/' + newName
+        
+        # rename it
+        cmd = TidyCmd(['zfs', 'rename', self.dataset, newDataset])
+        cmd.run()
+        # if the command failed then dont continue
+        if (cmd.returnCode != 0):
+            return False
+        
+        # get a list of child datasets and their mountpoints so that we can update hte mountpoints
+        cmd = TidyCmd(['zfs', 'get', '-H', '-o', 'name,value', '-r', 'mountpoint', newDataset])
+        cmd.appendPipe(['sort', '-r', '-n'])
+        cmd.run()
+        # if the command failed then dont continue
+        if (cmd.returnCode != 0):
+            return False
+        
+        # loop over the children
+        for line in cmd.getStdOut().splitlines():
+            oldDataset = line.split()[0]
+            oldMountPoint = line.split()[1]
+            # replace the location of the parent dataset with the new dataset
+            # OLD BASH CODE: _newMountpoint="${TREDLY_PARTITIONS_MOUNT}/${_newPartitionName}$( rcut "${_oldMountpoint}" "${_prefix}" )"
+            newMountPoint = oldMountPoint.replace(self.dataset, newDataset)
+            
+            # get a zfs object for this child
+            zfsChild = ZFSDataset(oldDataset, oldMountPoint)
+            
+            # remount it
+            if (not zfsChild.changeMountPoint(newMountPoint, True)):
+                e_error("Failed to change mountpoint of dataset " + oldDataset)
+                return False
+        
+        # set our dataset and mountpoint to the new values
+        self.dataset = newDataset
+        self.mountPoint = newMountPoint
+        
+        return True

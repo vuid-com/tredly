@@ -580,6 +580,9 @@ function partition_list() {
         _quota=$( zfs_get_property "${_dataset}" "quota" )
         _maxCPU=$( zfs_get_property "${_dataset}" "${ZFS_PROP_ROOT}:maxcpu" )
         _maxRAM=$( zfs_get_property "${_dataset}" "${ZFS_PROP_ROOT}:maxram" )
+        
+        IFS=$'\n' local -a _ip4Whitelist=($( zfs_get_custom_array "${_dataset}" "${ZFS_PROP_ROOT}.ptn_ip4whitelist" ))
+        IFS=$'\n' local -a _publicIps=($( zfs_get_custom_array "${_dataset}" "${ZFS_PROP_ROOT}.publicips" ))
 
         # clean up some default values
         if [[ "${_quota}" == "none" ]]; then
@@ -594,8 +597,8 @@ function partition_list() {
 
         _numContainers=$( zfs list -d3 -rH -o name "${_dataset}/${TREDLY_CONTAINER_DIR_NAME}" | grep -Ev "${TREDLY_CONTAINER_DIR_NAME}\$|${_partitionName}\$" | wc -l )
 
-        _listString=$( echo "${_listString}" ; printf "%s^%s^%s^%s^%s^%s\n" \
-                                               "${_partitionName}" "${_maxCPU}" "${_maxRAM}" "${_usedSpace}/${_quota}" "-" "${_numContainers}")
+        _listString=$( echo "${_listString}" ; printf "%s^%s^%s^%s^%s^%s^%s\n" \
+                                               "${_partitionName}" "${_maxCPU}" "${_maxRAM}" "${_usedSpace}/${_quota}" "${#_ip4Whitelist[@]}" "${#_publicIps[@]}" "${_numContainers}")
     done
 
     if [[ ${#_datasets[@]} -eq 0 ]]; then
@@ -604,7 +607,7 @@ function partition_list() {
         e_header "Listing All Partitions"
         echo -e "--------------------"
         printf "\e[1m"
-        echo -e "Partition^CPU^RAM^HDD(Used/Total)^PublicIPs^Containers\e[0m\e[39m\n${_listString}" | column -ts^
+        echo -e "Partition^CPU^RAM^HDD(Used/Total)^IP4WhiteList^PublicIPs^Containers\e[0m\e[39m\n${_listString}" | column -ts^
         echo -e "--------------------\n`ltrim "${#_datasets[@]}"` partitions listed."
     fi
 }

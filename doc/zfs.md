@@ -86,7 +86,6 @@ None
 * com.tredly.layer4proxyudp - array of udp ports set up for layer 4 proxy
 * com.tredly.startepoch - array of epoch times of when this container has previously been started
 
-
 ## Partition Properties
 * quota - max disk usage
 * com.tredly:partition - name of partition

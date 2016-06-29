@@ -184,6 +184,22 @@ def networkInterfaceExists(interface):
     else:
         return True
 
+# checks strings in the format 192.168.0.1/24
+def isValidIp4AndCidr(ip4):
+    # must contain a slash
+    if ('/' not in ip4):
+        return False
+    
+    # make sure the ip part is valid
+    if (not isValidIp4(ip4.split('/', 1)[0])):
+        return False
+    
+    if (not isValidCidr(ip4.split('/', 1)[-1])):
+        return False
+    
+    # checks passed
+    return True
+
 # checks whether an ip address is valid or not
 def isValidIp4(ip4):
     try:
