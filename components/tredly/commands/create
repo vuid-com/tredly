@@ -72,7 +72,6 @@ case "${_SUBCOMMANDS[0]}" in
                     _partition_ram="${value}"
                 ;;
                 ipv4Whitelist)
-                    echo "${value}"
                     _partition_ip4whitelist="${value}"
                 ;;
                 *)
@@ -84,7 +83,7 @@ case "${_SUBCOMMANDS[0]}" in
         done
 
         # create the partition
-        partition_create "${_SUBCOMMANDS[1]}" "${_partition_hdd}" "${_partition_cpu}" "${_partition_ram}" "${_partition_ip4whitelist}"
+        tredly-host create partition "${_SUBCOMMANDS[1]}" --maxhdd="${_partition_hdd}" --maxcpu="${_partition_cpu}" --maxram="${_partition_ram}" --ipv4whitelist="${_partition_ip4whitelist}"
 
     ;;
     *)

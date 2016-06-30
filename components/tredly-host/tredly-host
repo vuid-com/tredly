@@ -89,12 +89,35 @@ if (args.action == "version"):
     exit(0)
 
 # populate the action args
-actionArgs['maxCpu'] = args.maxcpu
-actionArgs['maxRam'] = args.maxram
-actionArgs['maxHdd'] = args.maxhdd
-actionArgs['ipv4Whitelist'] = args.ipv4whitelist
-actionArgs['publicIps'] = args.publicips
-actionArgs['partitionName'] = args.partitionname
+if (args.maxcpu is not None) and (len(args.maxcpu) > 0):
+    actionArgs['maxCpu'] = args.maxcpu
+else:
+    actionArgs['maxCpu'] = None
+
+if (args.maxram is not None) and (len(args.maxram)) > 0:
+    actionArgs['maxRam'] = args.maxram
+else:
+    actionArgs['maxRam'] = None
+
+if (args.maxhdd is not None) and (len(args.maxhdd) > 0):
+    actionArgs['maxHdd'] = args.maxhdd
+else:
+    actionArgs['maxHdd'] = None
+    
+if (args.ipv4whitelist is not None) and (len(args.ipv4whitelist) > 0):
+    actionArgs['ipv4Whitelist'] = args.ipv4whitelist
+else:
+    actionArgs['ipv4Whitelist'] = None
+    
+if (args.publicips is not None) and (len(args.publicips) > 0):
+    actionArgs['publicIps'] = args.publicips
+else:
+    actionArgs['publicIps'] = None
+    
+if (args.partitionname is not None) and (len(args.partitionname) > 0):
+    actionArgs['partitionName'] = args.partitionname
+else:
+    actionArgs['partitionName'] = None
 
 # get a tredlyhost object
 tredlyHost = TredlyHost()

@@ -137,7 +137,7 @@ case "${_SUBCOMMANDS[0]}" in
         done
 
         # modify the partition
-        partition_modify "${_SUBCOMMANDS[1]}" "${_partition_name}" "${_partition_hdd}" "${_partition_cpu}" "${_partition_ram}" "${_partition_ip4whitelist}"
+        tredly-host modify partition "${_SUBCOMMANDS[1]}" --partitionname="${_partition_name}" --maxhdd="${_partition_hdd}" --maxcpu="${_partition_cpu}" --maxram="${_partition_ram}" --ipv4whitelist="${_partition_ip4whitelist}"
 
     ;;
     *)

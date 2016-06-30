@@ -57,9 +57,10 @@ class ActionCreate:
         if (ip4Whitelist is not None):
             # split up the CSV
             ip4WhitelistList = []
+            
             for ip in ip4Whitelist.split(','):
-                if (isValidIp4(ip.strip())):
-                    ip4WhitelistList.append(IPv4Address(ip.strip()))
+                if (isValidIp4(ip.strip())) or (isValidIp4AndCidr(ip.strip())):
+                    ip4WhitelistList.append(IPv4Interface(ip.strip()))
                 else:
                     e_error("ipv4whitelist value " + ip + " is not valid" )
                     exit(1)
