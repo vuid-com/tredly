@@ -189,17 +189,30 @@ class Layer7Proxy:
     # Params: file - the path to the file to save this as
     #         whitelist - a list of ip addresses to whitelist in this access file
     #         deny - whether or not to add a deny all rule to the end of this file
+    #         clearExisting - whether or not to delete any existing rules
     #
     # Return: True if succeeded, False otherwise
-    def registerAccessFile(self, file, whitelist, deny = False):
+    def registerAccessFile(self, file, whitelist, deny = False, clearExisting = False):
         # create nginxblocks from each of these files
         accessFile = NginxBlock(None, None, file)
         accessFile.loadFile()
         
+        # clear existing rules if requested
+        if (clearExisting):
+            try:
+                del accessFile.attrs['allow']
+            except KeyError:
+                pass
+                
+            try:
+                del accessFile.attrs['deny']
+            except KeyError:
+                pass
+        
         # loop over the whitelist and add in the ips to the access file
         if (len(whitelist) > 0):
             for ip4 in whitelist:
-                accessFile.addAttr('allow', ip4)
+                accessFile.addAttr('allow', str(ip4))
         else:
             accessFile.addAttr('allow', 'all')
         

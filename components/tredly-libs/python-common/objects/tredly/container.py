@@ -2187,15 +2187,15 @@ class Container:
         urlIncludes = []
         
         # check if a whitelist exists and whitelist each url
-        if (len(self.ipv4Whitelist) > 0):
-            urlIncludes.append('/usr/local/etc/nginx/access/' + nginxFormatFilename(self.uuid))
+        #if (len(self.ipv4Whitelist) > 0):
+        urlIncludes.append('/usr/local/etc/nginx/access/' + nginxFormatFilename(self.uuid))
         
         # get the partition whitelist
         zfsPartition = ZFSDataset('zroot/tredly/ptn/' + self.partitionName)
         ptnWhitelist = zfsPartition.getArray(ZFS_PROP_ROOT + '.ptn_ip4whitelist')
         # include the ptn whitelist if it has elements
-        if (len(ptnWhitelist) > 0):
-            urlIncludes.append('/usr/local/etc/nginx/access/ptn_' + nginxFormatFilename(self.partitionName))
+        #if (len(ptnWhitelist) > 0):
+        urlIncludes.append('/usr/local/etc/nginx/access/ptn_' + nginxFormatFilename(self.partitionName))
         
         for urlObj in self.urls:
             e_note("Setting up URL " + urlObj['url'])
@@ -2226,12 +2226,14 @@ class Container:
                 e_error("Failed to register url " + urlObj['url'])
 
             # add container whitelist
-            if (len(self.ipv4Whitelist) > 0):
-                layer7Proxy.registerAccessFile('/usr/local/etc/nginx/access/' + self.uuid, self.ipv4Whitelist, True)
+            layer7Proxy.registerAccessFile('/usr/local/etc/nginx/access/' + self.uuid, self.ipv4Whitelist, False)
+            #if (len(self.ipv4Whitelist) > 0):
+                #layer7Proxy.registerAccessFile('/usr/local/etc/nginx/access/' + self.uuid, self.ipv4Whitelist, True)
 
             # set the partition whitelist access file
-            if (len(ptnWhitelist) > 0):
-                layer7Proxy.registerAccessFile('/usr/local/etc/nginx/access/ptn_' + self.partitionName, ptnWhitelist.values(), True)
+            layer7Proxy.registerAccessFile('/usr/local/etc/nginx/access/ptn_' + self.partitionName, ptnWhitelist.values(), False)
+            #if (len(ptnWhitelist) > 0):
+                #layer7Proxy.registerAccessFile('/usr/local/etc/nginx/access/ptn_' + self.partitionName, ptnWhitelist.values(), True)
             
             
             # Register this URL in DNS

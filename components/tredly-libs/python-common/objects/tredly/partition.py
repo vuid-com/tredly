@@ -6,6 +6,7 @@ from objects.zfs.zfs import ZFSDataset
 from objects.tredly.container import Container
 from includes.defines import *
 from includes.output import *
+from objects.nginx.layer7proxy import *
 
 from subprocess import Popen, PIPE
 import os
@@ -25,11 +26,11 @@ class Partition:
         if (self.exists()):
             self.loadFromZFS()
         
+        # overwrite hte values loaded from zfs
         self.name = name
         self.newName = newName
         self.maxHdd = maxHdd    # in megabytes
         self.maxRam = maxRam    # in megabytes
-        self.maxCpu = None
         
         # check if maxCpu was a percentage and apply accordingly
         if (maxCpu is not None):
@@ -46,10 +47,8 @@ class Partition:
         else:
             self.publicIps = []
             
-        if (ip4Whitelist is not None):
+        if (ip4Whitelist is not None) and (len(ip4Whitelist) > 0):
             self.ip4Whitelist = ip4Whitelist    # list of ip addresses whitelisted for this partition
-        else:
-            self.ip4Whitelist = []
         
 
     # Action: load all values from zfs into this object
@@ -73,8 +72,8 @@ class Partition:
         self.maxCpu = self.zfs.getProperty(ZFS_PROP_ROOT + ':maxcpu')
 
         # zfs arrays
-        self.publicIps = self.zfs.getArray(ZFS_PROP_ROOT + '.publicips')
-        self.ip4Whitelist = self.zfs.getArray(ZFS_PROP_ROOT + '.ptn_ip4whitelist')
+        self.publicIps = self.zfs.getArray(ZFS_PROP_ROOT + '.publicips').items()
+        self.ip4Whitelist = self.zfs.getArray(ZFS_PROP_ROOT + '.ptn_ip4whitelist').items()
 
         return True
     
@@ -221,7 +220,7 @@ class Partition:
         # apply ip4 whitelisting
         if (len(self.ip4Whitelist) > 0):
             e_note("Applying Whitelist")
-
+    
             if (self.applyWhitelist()):
                 e_success()
             else:
@@ -310,10 +309,10 @@ class Partition:
     # Pre: this partition exists
     # Post: partition has been modified
     #
-    # Params: 
+    # Params: clearWhitelist - whether or not to clear out the whitelist, regardless of the value of self.ip4whitelist
     #
     # Return: True if succeeded, False otherwise
-    def modify(self):
+    def modify(self, clearWhitelist = False):
         ### pre flight checks
         
         # ensure that this partition exists as we are modifying it
@@ -329,11 +328,11 @@ class Partition:
                 return False
         
         # ensure there are no containers built within this partition
-        zfsContainerList = ZFSDataset(self.dataset + '/' + TREDLY_CONTAINER_DIR_NAME, self.mountpoint + '/' + TREDLY_CONTAINER_DIR_NAME)
-        containerDatasets = zfsContainerList.listChildren()
-        if (len(containerDatasets) > 0):
-            e_error("Partition " + self.name + " currently has built containers. Please destroy them and run this command again.")
-            return False
+        #zfsContainerList = ZFSDataset(self.dataset + '/' + TREDLY_CONTAINER_DIR_NAME, self.mountpoint + '/' + TREDLY_CONTAINER_DIR_NAME)
+        #containerDatasets = zfsContainerList.listChildren()
+        #if (len(containerDatasets) > 0):
+            #e_error("Partition " + self.name + " currently has built containers. Please destroy them and run this command again.")
+            #return False
         
         # End pre flight checks
         
@@ -367,15 +366,13 @@ class Partition:
                 e_error()
                 return False
 
-        # apply ip4 whitelisting
-        if (len(self.ip4Whitelist) > 0):
-            e_note("Applying Whitelist")
-
-            if (self.applyWhitelist()):
-                e_success()
-            else:
-                e_error()
-                return False
+        e_note("Applying Whitelist")
+        
+        if (self.applyWhitelist(clearWhitelist)):
+            e_success()
+        else:
+            e_error()
+            return False
         
         # apply public ips
         if (len(self.publicIps) > 0):
@@ -409,26 +406,45 @@ class Partition:
     #
     # Return: True if succeeded, False otherwise
     # TODO: untested, required for modify
-    def applyWhitelist(self):
-        # set the ips in zfs
-        for ip in self.ip4Whitelist:
-            if (not self.zfs.appendArray(ZFS_PROP_ROOT + '.ptn_ip4whitelist', ip)):
+    def applyWhitelist(self, clearWhitelist = False):
+
+        if (clearWhitelist):
+            # remove all data from zfs array
+            if (not self.zfs.unsetArray(ZFS_PROP_ROOT + '.ptn_ip4whitelist')):
                 return False
+        else:
+            # set the ips in zfs
+            for ip in self.ip4Whitelist:
+                if (not self.zfs.appendArray(ZFS_PROP_ROOT + '.ptn_ip4whitelist', ip)):
+                    return False
 
         # get a list of containers in this partition
         containers = self.getContainers()
-        
-        # loop over the containers and apply their whitelists to ipfw and layer 7 proxy
+
+        # loop over the containers and apply their whitelists to ipfw
         for container in containers:
+            # flush the table before applying new rules
+            if (not container.firewall.flushTable(CONTAINER_IPFW_WL_TABLE_PARTITION)):
+                e_error("Failed to flush table " + CONTAINER_IPFW_WL_TABLE_PARTITION + " in container.")
+            
             # apply to IPFW
             for ip4 in self.ip4Whitelist:
-                if (not self.firewall.appendTable(CONTAINER_IPFW_WL_TABLE_PARTITION, ip4)):
+                if (not container.firewall.appendTable(CONTAINER_IPFW_WL_TABLE_PARTITION, str(ip4))):
                     return False
             
             # apply the firewall table
-            if (not self.firewall.apply()):
+            if (not container.firewall.apply()):
                 return False
-            
-            # TODO: apply to layer 7 proxy
+        
+        # apply to layer 7 proxy
+        l7Proxy = Layer7Proxy()
+
+        if (clearWhitelist):
+            l7Proxy.registerAccessFile('/usr/local/etc/nginx/access/ptn_' + self.name, [], False, True)
+        else:
+            # set up the access file for the partition
+            l7Proxy.registerAccessFile('/usr/local/etc/nginx/access/ptn_' + self.name, self.ip4Whitelist, False, True)
+
+        l7Proxy.reload()
 
         return True

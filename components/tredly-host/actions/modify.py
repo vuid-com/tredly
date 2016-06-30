@@ -50,9 +50,11 @@ class ActionModify:
                 e_error("maxram value " + maxRam + " is not valid")
                 exit(1)
         
-        # turn the whitelist into a list of IPv4Address and validate at the same time
         ip4WhitelistList = []
-        if (ip4Whitelist is not None):
+        clearWhitelist = False
+        # if the whitelist is == clear then delete everything
+        if (ip4Whitelist != 'clear') and (ip4Whitelist is not None):
+            # turn the whitelist into a list of IPv4Address and validate at the same time
             # split up the CSV
             ip4WhitelistList = []
             for ip in ip4Whitelist.split(','):
@@ -61,6 +63,8 @@ class ActionModify:
                 else:
                     e_error("ipv4whitelist value " + ip + " is not valid" )
                     exit(1)
+        elif (ip4Whitelist == "clear"):
+            clearWhitelist = True
         
         # TODO: ensure these public ips arent already in use
         publicIpList = []
@@ -74,7 +78,6 @@ class ActionModify:
                     exit(1)
         
         #######
-        
         # create a partition object
         partition = Partition(partitionName, maxHdd, maxCpu, maxRam, publicIpList, ip4WhitelistList, newName)
         
@@ -84,4 +87,5 @@ class ActionModify:
             e_error("Partition does not exist.")
             exit(1)
         
-        partition.modify()
+        
+        partition.modify(clearWhitelist)

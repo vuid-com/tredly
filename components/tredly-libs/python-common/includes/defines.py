@@ -105,9 +105,9 @@ CONTAINER_IPFW_SCRIPT = "/usr/local/etc/ipfw.rules"
 CONTAINER_IPFW_PARTITION_SCRIPT = "/usr/local/etc/ipfw.partition"
 
 # the table numbers within the container for each whitelist
-CONTAINER_IPFW_WL_TABLE_CONTAINERGROUP = "1"
-CONTAINER_IPFW_WL_TABLE_PARTITION = "2"
-CONTAINER_IPFW_WL_TABLE_CONTAINER = "3"
+CONTAINER_IPFW_WL_TABLE_CONTAINERGROUP = 1
+CONTAINER_IPFW_WL_TABLE_PARTITION = 2
+CONTAINER_IPFW_WL_TABLE_CONTAINER = 3
 
 ## what to rename the interface to within the container
 VNET_CONTAINER_IFACE_NAME = "vnet0"

@@ -188,9 +188,15 @@ class IPFW:
     def readRules(self):
         # get a list of tables to read
         tables = glob.glob(self.directory.rstrip('/') + "/ipfw.table.*")
-        
+
         # loop over the tables, and read each file
         for table in tables:
+            # get the table number from teh filename
+            filenameTableNum = table.rsplit('.', 1)[-1]
+            
+            # set up the table in case its empty
+            self.tables[int(filenameTableNum)] = []
+
             # read the file
             with open(table) as ipfwTableFile:
                 for line in ipfwTableFile:
@@ -280,4 +286,23 @@ class IPFW:
             # remove the value
             self.tables[tableNum].remove(value)
         
+        return True
+    
+    # Action: delete all elements within a table
+    #
+    # Pre: this object exists
+    # Post: value has been removed from table tableNum
+    #
+    # Params: tableNum - the table number to remove from
+    #         values - the value to remove
+    #
+    # Return: True if succeeded, False otherwise
+    def flushTable(self, tableNum):
+        # if the table doesnt exist return false
+        if (tableNum not in self.tables):
+            return False
+        
+        # flush it
+        self.tables[int(tableNum)] = []
+
         return True
