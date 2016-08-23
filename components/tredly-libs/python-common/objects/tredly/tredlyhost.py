@@ -365,6 +365,101 @@ class TredlyHost:
         # exit code of 0 == running
         return (result.returncode == 0)
 
+    # Action: get memory data for this host
+    #
+    # Pre:
+    # Post:
+    #
+    # Params:
+    #
+    # Return: dict
+    def getMemoryDetails(self, partitionName = None):
+        # get memory data
+        memCmd = TidyCmd(['top', '-d1'])
+        memCmd.appendPipe(['grep', '^Mem:'])
+        memOutput = memCmd.run()
+
+        # strip off the "Mem: " part and then split on ", "
+        memList = memOutput.split(': ', 1)[-1].split(', ')
+
+        # now turn it into a dict
+        memory = {}
+        for mem in memList:
+            # split each item by the first space
+            key = mem.split(' ', 1)[-1].lower()
+
+            # TODO: change value into bytes
+            value = mem.split(' ', 1)[0]
+            memory[key] = value
+
+        return memory
+
+    # Action: get cpu details for this host
+    #
+    # Pre:
+    # Post:
+    #
+    # Params:
+    #
+    # Return: dict
+    def getCpuDetails(self, partitionName = None):
+        cpu = {}
+
+        # get number of cpus
+        numCpuCmd = TidyCmd(['sysctl', '-n', 'hw.ncpu'])
+        cpu['num'] = int(numCpuCmd.run())
+
+        # get load average
+        uptimeCmd = TidyCmd(['uptime'])
+        uptime = uptimeCmd.run()
+
+        # split up the data to get specific values
+        loadAverages = uptime.split('load averages: ')[-1]
+
+        cpu['loadAverage'] = {}
+        cpu['loadAverage'][1] = float(loadAverages.split(', ')[0])
+        cpu['loadAverage'][5] = float(loadAverages.split(', ')[1])
+        cpu['loadAverage'][15] = float(loadAverages.split(', ')[2])
+
+        # calculate the available resources over the same time periods
+        cpu['availableAverage'] = {}
+        cpu['availableAverage'][1] = cpu['num'] - cpu['loadAverage'][1]
+        cpu['availableAverage'][5] = cpu['num'] - cpu['loadAverage'][5]
+        cpu['availableAverage'][15] = cpu['num'] - cpu['loadAverage'][15]
+
+        # negative values aren't valid
+        if (cpu['availableAverage'][1] < 0):
+            cpu['availableAverage'][1] = 0
+        if (cpu['availableAverage'][5] < 0):
+            cpu['availableAverage'][5] = 0
+        if (cpu['availableAverage'][15] < 0):
+            cpu['availableAverage'][15] = 0
+
+        return cpu
+
+    # Action: get disk details for the given partition
+    #
+    # Pre:
+    # Post:
+    #
+    # Params:
+    #
+    # Return: dict
+    def getDiskDetails(self, partitionName = None):
+        disk = {}
+
+        if (partitionName is None):
+            dataset = ZFS_TREDLY_PARTITIONS_DATASET
+        else:
+            dataset = ZFS_TREDLY_PARTITIONS_DATASET + '/' + partitionName
+
+        # get the partition's free space
+        zfs = ZFSDataset(dataset)
+        disk['used'] = zfs.getProperty('used')
+        disk['available'] = zfs.getProperty('available')
+
+        return disk
+
     # Action: initialise the zfs datasets ready for use by tredly
     #
     # Pre:

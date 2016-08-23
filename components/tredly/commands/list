@@ -21,6 +21,8 @@ case "${_SUBCOMMANDS[0]}" in
         # list the containers
         list_containers "${_SUBCOMMANDS[1]}" "${_SUBCOMMANDS[2]}"
 
+        echo "--------------------"
+
     ;;
     partition)
         # validation
@@ -29,6 +31,8 @@ case "${_SUBCOMMANDS[0]}" in
         fi
 
         partition_list "${_SUBCOMMANDS[1]}"
+
+        echo "--------------------"
     ;;
     partitions)
         # validation
@@ -37,10 +41,13 @@ case "${_SUBCOMMANDS[0]}" in
         fi
 
         partition_list
+
+        echo "--------------------"
+    ;;
+    resources)
+        tredly-host list "${_SUBCOMMANDS[@]}"
     ;;
     *)
         exit_with_error "Unknown list command \"${_SUBCOMMANDS[0]}\""
     ;;
 esac
-
-echo "--------------------"

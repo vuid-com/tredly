@@ -265,3 +265,28 @@ def validateIp4Addr(ip4Addr):
             return False
 
     return True
+
+# takes a 2d list and formats it into a talbe in the same manner as the "column" binary
+def formatTable(data, heading = None):
+    output = ''
+    minPadding = 2
+
+    # calculate the width of the columns
+    col_width = max(len(str(word)) for row in data for word in row) + minPadding
+
+    # if we received a heading then bold each element
+    if (heading is not None):
+        output += formatBold + "".join(str(word).ljust(col_width) for word in heading) + "\n" + formatDefault
+
+    # append the data
+    i = 0
+    for row in data:
+        output += "".join(str(word).ljust(col_width) for word in row)
+
+        # add a newline if this isnt the last element
+        if (i < (len(data)-1)):
+            output += "\n"
+
+        i = i + 1
+
+    return output
