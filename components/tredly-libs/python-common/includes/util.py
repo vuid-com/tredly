@@ -272,16 +272,23 @@ def formatTable(data, heading = None):
     minPadding = 2
 
     # calculate the width of the columns
-    col_width = max(len(str(word)) for row in data for word in row) + minPadding
+    colWidth = max(len(str(word)) for row in data for word in row) + minPadding
 
-    # if we received a heading then bold each element
+    # if we received a heading then calculate col widths on that and bold each element
     if (heading is not None):
-        output += formatBold + "".join(str(word).ljust(col_width) for word in heading) + "\n" + formatDefault
+        # if the headings are longer than the data then update colWidth
+        headingColWidth = max(len(str(word)) for word in heading) + minPadding
+
+        if (headingColWidth > colWidth):
+            colWidth = headingColWidth
+
+        # output the heading
+        output += formatBold + "".join(str(word).ljust(colWidth) for word in heading) + "\n" + formatDefault
 
     # append the data
     i = 0
     for row in data:
-        output += "".join(str(word).ljust(col_width) for word in row)
+        output += "".join(str(word).ljust(colWidth) for word in row)
 
         # add a newline if this isnt the last element
         if (i < (len(data)-1)):
